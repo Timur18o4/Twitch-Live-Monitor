@@ -1,0 +1,12 @@
+[Unit]
+Description=Open the Twitch channel page while the channel is live
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/twitch-live-browser/config.env
+ExecStart=/usr/bin/python3 %h/.local/share/twitch-live-browser/monitor.py
+Restart=on-failure
+RestartSec=20
+KillMode=control-group

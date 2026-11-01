@@ -1,0 +1,6 @@
+# Local credentials and runtime state
+config.env
+.env
+token_state.json
+__pycache__/
+*.py[cod]
