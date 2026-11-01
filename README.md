@@ -1,64 +1,66 @@
-# Twitch Live Browser for Raspberry Pi
+# Twitch-Live-Monitor für Raspberry Pi
 
-This service checks whether each configured Twitch channel is live. When a channel is live, it opens that channel page in its own Chromium or Firefox window. When Twitch reports the channel offline, it closes that window. Each channel has a separate browser profile. It checks every 15 seconds by default.
+Der Dienst prüft, ob einer der eingetragenen Twitch-Kanäle live ist. Für jeden Live-Kanal öffnet er ein eigenes Fenster mit der Twitch-Kanalseite. Sobald Twitch den Kanal als offline meldet, schließt der Dienst das von ihm gestartete Fenster. Standardmäßig fragt er den Status alle 15 Sekunden ab.
 
-The monitor uses Twitch's Helix Get Streams endpoint with either an app access token or a user access token. It does not need permission to manage the channel. The regular Twitch channel page is opened in a dedicated browser profile, so you can sign in there if you want. Twitch controls playback on its own page.
+Der Monitor verwendet die Twitch-Helix-Schnittstelle `Get Streams` mit einem App-Token oder einem User-Token. Er braucht keine Berechtigung, den Kanal zu verwalten. Geöffnet wird die normale Twitch-Kanalseite in einem eigenen Browserprofil. Dort kannst du dich bei Twitch anmelden; die Wiedergabe steuert Twitch selbst.
 
-## Requirements
+## Voraussetzungen
 
-- Raspberry Pi OS with a desktop session and internet access
+- Raspberry Pi OS mit grafischer Oberfläche und Internetverbindung
 - Python 3
-- Chromium or Firefox
-- A Twitch developer application with a Client ID and either a Client Secret or a user access/refresh token pair
+- Chromium oder Firefox
+- Eine Twitch-Entwickleranwendung mit Client ID und entweder Client Secret oder einem Paar aus User-Access-Token und Refresh-Token
 
-Create the app at [Twitch Developer Console](https://dev.twitch.tv/console/apps). Twitch requires two-factor authentication for developer console access. Copy the app's Client ID. You can use either a Client Secret or a user access/refresh token pair. If the registration form requires a redirect URL, enter http://localhost:3000; this monitor does not use an interactive Twitch login.
+## Twitch-Anwendung vorbereiten
 
-## Install
+Erstelle eine Anwendung in der [Twitch Developer Console](https://dev.twitch.tv/console/apps) und notiere ihre Client ID. Für den Zugriff auf die Entwicklerkonsole verlangt Twitch eine aktivierte Zwei-Faktor-Authentifizierung. Wenn beim Erstellen eine Weiterleitungs-URL verlangt wird, trage `http://localhost:3000` ein. Der Monitor verwendet keine interaktive Twitch-Anmeldung.
 
-Extract this folder on the Pi, open a terminal in it, then run:
+## Installation
+
+Entpacke den Ordner auf dem Pi, öffne darin ein Terminal und führe Folgendes aus:
 
     chmod +x install.sh
     ./install.sh
 
-Edit the configuration file:
+Öffne anschließend die Konfigurationsdatei:
 
     nano ~/.config/twitch-live-browser/config.env
 
-Set TWITCH_CLIENT_ID and one authentication option in the configuration. For a Client Secret, set TWITCH_CLIENT_SECRET. For user tokens, remove the placeholder Client Secret line and set both TWITCH_ACCESS_TOKEN and TWITCH_REFRESH_TOKEN. Keep values on one line and do not add quotes.
+Trage `TWITCH_CLIENT_ID` und eine Anmeldemethode ein. Für den App-Token-Modus brauchst du `TWITCH_CLIENT_SECRET`. Für den User-Token-Modus entfernst du die Platzhalterzeile für das Client Secret und setzt sowohl `TWITCH_ACCESS_TOKEN` als auch `TWITCH_REFRESH_TOKEN`. Schreibe jeden Wert in eine eigene Zeile und verwende keine Anführungszeichen.
 
-Start the service in the current desktop session:
+Starte den Dienst in der aktuellen grafischen Sitzung:
 
     ~/.local/share/twitch-live-browser/start-from-desktop.sh
 
-The installer also adds a desktop autostart entry. The monitor will start automatically at the next desktop login. Check its status with:
+Das Installationsskript legt außerdem einen Autostart-Eintrag auf dem Desktop an. Der Monitor startet damit bei der nächsten Anmeldung an der grafischen Oberfläche automatisch. Den Dienststatus prüfst du mit:
 
     systemctl --user status twitch-live-browser.service
 
-See recent messages with:
+Aktuelle Meldungen zeigt dieser Befehl:
 
     journalctl --user -u twitch-live-browser.service -f
 
-## Settings
+## Einstellungen
 
-The file ~/.config/twitch-live-browser/config.env accepts:
+Die Datei `~/.config/twitch-live-browser/config.env` unterstützt folgende Werte:
 
-- TWITCH_CHANNELS: comma-separated Twitch login names; default package config monitors timur18o4 and frau_potti
-- TWITCH_CHANNEL: legacy single-channel setting, used if TWITCH_CHANNELS is not set
-- CHECK_INTERVAL_SECONDS: status check interval; default 15, minimum 10
-- TWITCH_CLIENT_ID: required Twitch app Client ID
-- TWITCH_CLIENT_SECRET: app-token mode; may be omitted when using user tokens
-- TWITCH_ACCESS_TOKEN and TWITCH_REFRESH_TOKEN: optional pair for user-token mode
+- `TWITCH_CHANNELS`: durch Kommas getrennte Twitch-Logins. Die Beispielkonfiguration überwacht `timur18o4` und `frau_potti`.
+- `TWITCH_CHANNEL`: ältere Einstellung für einen einzelnen Kanal; wird verwendet, wenn `TWITCH_CHANNELS` fehlt.
+- `CHECK_INTERVAL_SECONDS`: Abstand zwischen Statusabfragen in Sekunden; Standardwert 15, Mindestwert 10.
+- `TWITCH_CLIENT_ID`: erforderliche Client ID der Twitch-Anwendung.
+- `TWITCH_CLIENT_SECRET`: Client Secret für den App-Token-Modus; im User-Token-Modus optional.
+- `TWITCH_ACCESS_TOKEN` und `TWITCH_REFRESH_TOKEN`: optionales Token-Paar für den User-Token-Modus.
 
-A status change can take up to one check interval plus the API response time to appear. If Twitch's API or the network is temporarily unavailable, the monitor keeps the current browser state and retries.
+Eine Statusänderung wird spätestens nach einem Prüfintervall zuzüglich der Antwortzeit der Twitch-Schnittstelle erkannt. Bei vorübergehenden Problemen mit Twitch oder der Netzwerkverbindung behält der Monitor den aktuellen Browserstatus bei und versucht es erneut.
 
-In user-token mode, the service validates the access token on startup and hourly, then refreshes it when needed. Twitch rotates refresh tokens; each new pair is saved with owner-only file permissions in ~/.local/share/twitch-live-browser/token_state.json. A public Twitch app can refresh without a Client Secret; a confidential app may require one.
+Im User-Token-Modus prüft der Dienst das Access-Token beim Start und danach stündlich. Bei Bedarf erneuert er es. Twitch kann Refresh-Tokens austauschen; jedes neue Token-Paar wird mit Dateirechten gespeichert, die nur dem Pi-Benutzer Zugriff erlauben, unter `~/.local/share/twitch-live-browser/token_state.json`. Eine öffentliche Twitch-Anwendung kann Refresh-Tokens ohne Client Secret erneuern; bei einer vertraulichen Anwendung kann ein Client Secret erforderlich sein.
 
-The existing timur18o4 browser profile remains under ~/.local/share/twitch-live-browser/browser-profile. Additional channel profiles use ~/.local/share/twitch-live-browser/browser-profile-CHANNEL, so multiple channel windows do not conflict.
+Der bestehende Kanal `timur18o4` verwendet weiterhin sein Browserprofil unter `~/.local/share/twitch-live-browser/browser-profile`. Für weitere Kanäle erstellt der Monitor getrennte Profile mit Namen wie `~/.local/share/twitch-live-browser/browser-profile-frau_potti`. Dadurch kommen sich die Browserfenster nicht in die Quere.
 
-## Stop or remove
+## Dienst anhalten oder entfernen
 
-Stop it until the next desktop login:
+Bis zur nächsten Anmeldung kannst du den Dienst so anhalten:
 
     systemctl --user stop twitch-live-browser.service
 
-Remove the autostart entry and installed program by running ./uninstall.sh from this folder. Configuration and browser profile are retained.
+Um den Autostart-Eintrag und die installierten Programmdateien zu entfernen, führe `./uninstall.sh` im entpackten Ordner aus. Konfiguration und Browserprofile bleiben dabei erhalten.

@@ -1,4 +1,4 @@
-# Local credentials and runtime state
+# Lokale Zugangsdaten und Laufzeitdaten
 config.env
 .env
 token_state.json

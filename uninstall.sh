@@ -8,4 +8,4 @@ rm -f "$HOME/.local/share/twitch-live-browser/monitor.py"
 rm -f "$HOME/.local/share/twitch-live-browser/start-from-desktop.sh"
 systemctl --user daemon-reload
 rmdir "$HOME/.local/share/twitch-live-browser" 2>/dev/null || true
-printf '%s\n' "Removed the service and program files. Configuration and browser profile were kept."
+printf '%s\n' "Dienst und Programmdateien wurden entfernt. Konfiguration und Browserprofile bleiben erhalten."

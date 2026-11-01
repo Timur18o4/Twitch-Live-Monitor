@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Open one channel page per configured Twitch channel while live."""
+"""Öffnet für jeden konfigurierten Live-Kanal eine eigene Twitch-Seite."""
 
 from __future__ import annotations
 
@@ -26,9 +26,13 @@ REQUEST_TIMEOUT_SECONDS = 15
 
 def required_setting(name: str) -> str:
     value = os.environ.get(name, "").strip()
-    if not value or value.lower().startswith("replace_with_"):
-        raise RuntimeError(f"Set {name} in ~/.config/twitch-live-browser/config.env.")
+    if not value or is_placeholder(value):
+        raise RuntimeError(f"Trage {name} in ~/.config/twitch-live-browser/config.env ein.")
     return value
+
+
+def is_placeholder(value: str) -> bool:
+    return value.lower().startswith(("replace_with_", "hier_eintragen_"))
 
 
 def get_channels() -> list[str]:
@@ -37,9 +41,9 @@ def get_channels() -> list[str]:
         configured = os.environ.get("TWITCH_CHANNEL", "timur18o4")
     channels = list(dict.fromkeys(item.strip().lower() for item in configured.split(",") if item.strip()))
     if not channels:
-        raise RuntimeError("Set TWITCH_CHANNELS or TWITCH_CHANNEL to at least one Twitch login name.")
+        raise RuntimeError("Trage mindestens einen Twitch-Login in TWITCH_CHANNELS oder TWITCH_CHANNEL ein.")
     if any(not re.fullmatch(r"[a-z0-9_]{1,25}", channel) for channel in channels):
-        raise RuntimeError("TWITCH_CHANNELS must contain comma-separated Twitch login names.")
+        raise RuntimeError("TWITCH_CHANNELS darf nur durch Kommas getrennte Twitch-Logins enthalten.")
     return channels
 
 
@@ -72,7 +76,7 @@ class TwitchClient:
             return self.access_token
 
         if not self.client_secret:
-            raise RuntimeError("TWITCH_CLIENT_SECRET is required for app-token mode.")
+            raise RuntimeError("Für den App-Token-Modus ist TWITCH_CLIENT_SECRET erforderlich.")
         body = urlencode(
             {
                 "client_id": self.client_id,
@@ -90,13 +94,13 @@ class TwitchClient:
             with urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
                 payload = json.load(response)
         except HTTPError as exc:
-            raise RuntimeError(f"Twitch token request failed (HTTP {exc.code}).") from None
+            raise RuntimeError(f"Twitch-Token-Anfrage fehlgeschlagen (HTTP {exc.code}).") from None
         except URLError as exc:
-            raise RuntimeError(f"Twitch token request failed: {exc.reason}") from None
+            raise RuntimeError(f"Twitch-Token-Anfrage fehlgeschlagen: {exc.reason}") from None
 
         token = payload.get("access_token")
         if not token:
-            raise RuntimeError("Twitch did not return an access token.")
+            raise RuntimeError("Twitch hat kein Zugriffstoken zurückgegeben.")
         expires_in = int(payload.get("expires_in", 3600))
         self.access_token = token
         self.token_valid_until = time.monotonic() + max(0, expires_in - 60)
@@ -108,10 +112,10 @@ class TwitchClient:
         try:
             state = json.loads(self.token_state_path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
-            LOG.warning("Saved Twitch token state could not be read; using configured tokens.")
+            LOG.warning("Der gespeicherte Twitch-Tokenstatus ist unlesbar; die konfigurierten Tokens werden verwendet.")
             return
         if state.get("client_id") != self.client_id:
-            LOG.warning("Saved Twitch token state belongs to another app; using configured tokens.")
+            LOG.warning("Der gespeicherte Tokenstatus gehört zu einer anderen App; die konfigurierten Tokens werden verwendet.")
             return
         self.access_token = state.get("access_token") or self.access_token
         self.refresh_token = state.get("refresh_token") or self.refresh_token
@@ -141,7 +145,7 @@ class TwitchClient:
                 os.unlink(temporary_path)
             except OSError:
                 pass
-            raise RuntimeError("Could not securely save refreshed Twitch tokens.") from exc
+            raise RuntimeError("Erneuerte Twitch-Tokens konnten nicht sicher gespeichert werden.") from exc
 
     def _validate_user_token(self) -> bool:
         if not self.access_token:
@@ -156,12 +160,12 @@ class TwitchClient:
         except HTTPError as exc:
             if exc.code in (400, 401):
                 return False
-            raise RuntimeError(f"Twitch token validation failed (HTTP {exc.code}).") from None
+            raise RuntimeError(f"Twitch-Tokenprüfung fehlgeschlagen (HTTP {exc.code}).") from None
         except URLError as exc:
-            raise RuntimeError(f"Twitch token validation failed: {exc.reason}") from None
+            raise RuntimeError(f"Twitch-Tokenprüfung fehlgeschlagen: {exc.reason}") from None
 
         if payload.get("client_id") != self.client_id:
-            raise RuntimeError("TWITCH_CLIENT_ID does not match the supplied Twitch access token.")
+            raise RuntimeError("TWITCH_CLIENT_ID passt nicht zum angegebenen Twitch-Access-Token.")
         now = time.monotonic()
         self.token_valid_until = now + max(0, int(payload.get("expires_in", 0)))
         self.validate_again_at = now + 3600
@@ -169,7 +173,7 @@ class TwitchClient:
 
     def _refresh_user_token(self) -> str:
         if not self.refresh_token:
-            raise RuntimeError("A Twitch refresh token is required to renew the user access token.")
+            raise RuntimeError("Zum Erneuern des User-Access-Tokens ist ein Twitch-Refresh-Token erforderlich.")
         fields = {
             "client_id": self.client_id,
             "grant_type": "refresh_token",
@@ -188,22 +192,22 @@ class TwitchClient:
                 payload = json.load(response)
         except HTTPError as exc:
             raise RuntimeError(
-                f"Twitch rejected the refresh token (HTTP {exc.code}); a client secret may be required."
+                f"Twitch hat das Refresh-Token abgelehnt (HTTP {exc.code}); möglicherweise ist ein Client Secret erforderlich."
             ) from None
         except URLError as exc:
-            raise RuntimeError(f"Twitch token refresh failed: {exc.reason}") from None
+            raise RuntimeError(f"Erneuerung des Twitch-Tokens fehlgeschlagen: {exc.reason}") from None
 
         new_access = payload.get("access_token")
         new_refresh = payload.get("refresh_token")
         if not new_access or not new_refresh:
-            raise RuntimeError("Twitch did not return refreshed access and refresh tokens.")
+            raise RuntimeError("Twitch hat kein neues Paar aus Access-Token und Refresh-Token zurückgegeben.")
         self.access_token = new_access
         self.refresh_token = new_refresh
         now = time.monotonic()
         self.token_valid_until = now + max(0, int(payload.get("expires_in", 3600)) - 60)
         self.validate_again_at = now + 3600
         self._save_user_token_state()
-        LOG.info("Refreshed Twitch user access token.")
+        LOG.info("Twitch-User-Access-Token erneuert.")
         return new_access
 
     def _get_user_token(self) -> str:
@@ -252,13 +256,13 @@ class TwitchClient:
                     else:
                         self.access_token = None
                     continue
-                raise RuntimeError(f"Twitch live-status request failed (HTTP {exc.code}).") from None
+                raise RuntimeError(f"Twitch-Live-Statusabfrage fehlgeschlagen (HTTP {exc.code}).") from None
             except URLError as exc:
-                raise RuntimeError(f"Twitch live-status request failed: {exc.reason}") from None
-        raise RuntimeError("Twitch authorization failed after refreshing the app token.")
+                raise RuntimeError(f"Twitch-Live-Statusabfrage fehlgeschlagen: {exc.reason}") from None
+        raise RuntimeError("Twitch-Anmeldung schlug auch nach Erneuerung des App-Tokens fehl.")
 
     def is_live(self) -> bool:
-        """Backward-compatible convenience method for one-channel callers."""
+        """Rückwärtskompatible Hilfsmethode für Aufrufe mit einem Kanal."""
         return bool(self.live_channels())
 
 
@@ -312,32 +316,32 @@ class BrowserWindow:
             return True
         if not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
             if not self.missing_display_reported:
-                LOG.warning("No graphical session yet; browser launch will be retried.")
+                LOG.warning("Noch keine grafische Sitzung verfügbar; der Browserstart wird erneut versucht.")
                 self.missing_display_reported = True
             return False
 
         self.missing_display_reported = False
         commands = self._commands()
         if not commands:
-            LOG.error("No Chromium or Firefox executable found.")
+            LOG.error("Kein Chromium- oder Firefox-Programm gefunden.")
             return False
 
         for command in commands:
             try:
                 process = subprocess.Popen(command, start_new_session=True)
             except OSError as exc:
-                LOG.warning("Could not start browser: %s", exc)
+                LOG.warning("Browser konnte nicht gestartet werden: %s", exc)
                 continue
 
             time.sleep(1)
             if process.poll() is None:
                 self.process = process
                 self.opened_this_live_wave = True
-                LOG.info("Opened Twitch channel %s in a separate browser window.", self.channel)
+                LOG.info("Twitch-Kanal %s in einem eigenen Browserfenster geöffnet.", self.channel)
                 return True
-            LOG.warning("A browser command exited during startup; trying the next one.")
+            LOG.warning("Ein Browserprogramm wurde beim Start beendet; das nächste wird versucht.")
 
-        LOG.error("Could not keep a browser window open; launch will be retried.")
+        LOG.error("Browserfenster konnte nicht geöffnet bleiben; ein neuer Versuch folgt.")
         return False
 
     def close(self) -> None:
@@ -354,7 +358,7 @@ class BrowserWindow:
         except ProcessLookupError:
             return
         except OSError as exc:
-            LOG.warning("Could not close the browser cleanly: %s", exc)
+            LOG.warning("Browser konnte nicht ordnungsgemäß geschlossen werden: %s", exc)
             return
 
         try:
@@ -365,10 +369,10 @@ class BrowserWindow:
         try:
             os.killpg(process.pid, 0)
         except ProcessLookupError:
-            LOG.info("Closed the Twitch browser window.")
+            LOG.info("Twitch-Browserfenster geschlossen.")
             return
         except OSError as exc:
-            LOG.warning("Could not check whether the browser closed: %s", exc)
+            LOG.warning("Schließstatus des Browsers konnte nicht geprüft werden: %s", exc)
             return
 
         try:
@@ -379,7 +383,7 @@ class BrowserWindow:
             process.wait(timeout=2)
         except subprocess.TimeoutExpired:
             pass
-        LOG.info("Closed the Twitch browser window.")
+        LOG.info("Twitch-Browserfenster geschlossen.")
 
 
 def main() -> int:
@@ -389,21 +393,21 @@ def main() -> int:
     )
     client_id = required_setting("TWITCH_CLIENT_ID")
     client_secret = os.environ.get("TWITCH_CLIENT_SECRET", "").strip()
-    if client_secret.lower().startswith("replace_with_"):
+    if is_placeholder(client_secret):
         client_secret = ""
     user_access_token = os.environ.get("TWITCH_ACCESS_TOKEN", "").strip()
     user_refresh_token = os.environ.get("TWITCH_REFRESH_TOKEN", "").strip()
     if bool(user_access_token) != bool(user_refresh_token):
-        raise RuntimeError("Set both TWITCH_ACCESS_TOKEN and TWITCH_REFRESH_TOKEN, or neither.")
+        raise RuntimeError("Trage entweder beide Werte TWITCH_ACCESS_TOKEN und TWITCH_REFRESH_TOKEN oder keinen davon ein.")
     if not client_secret and not (user_access_token and user_refresh_token):
         raise RuntimeError(
-            "Set TWITCH_CLIENT_SECRET, or provide both user access and refresh tokens."
+            "Trage TWITCH_CLIENT_SECRET oder beide User-Tokens ein."
         )
     channels = get_channels()
     try:
         interval = max(10, int(os.environ.get("CHECK_INTERVAL_SECONDS", "15")))
     except ValueError as exc:
-        raise RuntimeError("CHECK_INTERVAL_SECONDS must be a whole number.") from exc
+        raise RuntimeError("CHECK_INTERVAL_SECONDS muss eine ganze Zahl sein.") from exc
 
     twitch = TwitchClient(
         client_id,
@@ -421,7 +425,7 @@ def main() -> int:
     signal.signal(signal.SIGTERM, request_stop)
     signal.signal(signal.SIGINT, request_stop)
 
-    LOG.info("Monitoring Twitch channels %s every %s seconds.", ", ".join(channels), interval)
+    LOG.info("Überwache Twitch-Kanäle %s alle %s Sekunden.", ", ".join(channels), interval)
     last_known_live: dict[str, bool | None] = {channel: None for channel in channels}
 
     while not stopping.is_set():
@@ -431,21 +435,21 @@ def main() -> int:
                 live = channel in live_channels
                 if live:
                     if last_known_live[channel] is not True:
-                        LOG.info("Channel %s is live.", channel)
+                        LOG.info("Kanal %s ist live.", channel)
                     browser.open()
                 else:
                     if last_known_live[channel] is True:
-                        LOG.info("Channel %s is offline.", channel)
+                        LOG.info("Kanal %s ist offline.", channel)
                     browser.close()
                 last_known_live[channel] = live
         except (HTTPError, URLError, RuntimeError, ValueError) as exc:
-            LOG.error("Could not update Twitch status: %s", exc)
+            LOG.error("Twitch-Status konnte nicht abgerufen werden: %s", exc)
 
         stopping.wait(interval)
 
     for browser in browsers.values():
         browser.close()
-    LOG.info("Monitor stopped.")
+    LOG.info("Monitor beendet.")
     return 0
 
 

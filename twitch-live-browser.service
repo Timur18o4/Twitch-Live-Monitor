@@ -1,5 +1,5 @@
 [Unit]
-Description=Open the Twitch channel page while the channel is live
+Description=Öffnet Twitch-Kanalseiten während eines Livestreams
 After=graphical-session.target
 PartOf=graphical-session.target
 
